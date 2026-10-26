@@ -81,6 +81,11 @@ python3 inject_open_tabs.py --dry-run   # preview what would be injected
 python3 inject_open_tabs.py             # inject into both session files
 ```
 
+With `--addon-tabs` it also opens, in each workspace, an addons.mozilla.org tab
+for every extension the space's Arc profile had enabled and that has a Firefox
+version (the list is `EXTENSION_MAP` in `sync_arc_to_zen.py`), so you can
+install them with **Add to Firefox**. Running it again adds no duplicates.
+
 ### Restoring Arc's Auto-Archived Tabs (optional)
 
 Arc archives inactive tabs on a timer (12h/24h/7d/30d). `restore_auto_archived.py`
