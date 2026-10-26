@@ -18,7 +18,9 @@
 # Requires: pip install lz4
 
 import argparse
+import itertools
 import json
+import re
 import struct
 import os
 import sys
@@ -171,12 +173,72 @@ def make_tab(url, title, ws_uuid, container_id, sync_id):
 
 
 # ---------------------------------------------------------------------------
+# Add-on tabs (--addon-tabs)
+# ---------------------------------------------------------------------------
+
+AMO_ADDON_URL = "https://addons.mozilla.org/firefox/addon/{}/"
+
+
+def arc_enabled_extensions(user_data, profile):
+    """Ids of the extensions installed and enabled in one Arc profile
+    (component extensions skipped)."""
+    settings = {}
+    for name in ('Secure Preferences', 'Preferences'):
+        try:
+            with open(os.path.join(user_data, profile, name), encoding='utf-8') as f:
+                settings.update(json.load(f).get('extensions', {}).get('settings', {}))
+        except (OSError, ValueError, AttributeError):
+            pass
+    ext_dir = os.path.join(user_data, profile, 'Extensions')
+    ids = []
+    for ext_id in sorted(os.listdir(ext_dir)) if os.path.isdir(ext_dir) else []:
+        info = settings.get(ext_id) or {}
+        if not re.fullmatch(r'[a-p]{32}', ext_id) or info.get('location') in (5, 10):
+            continue
+        # Older Chromium marks a disabled extension with state 0, newer with disable_reasons
+        if info.get('state', 1) == 1 and not info.get('disable_reasons'):
+            ids.append(ext_id)
+    return ids
+
+
+def addon_tabs(spaces, ws_map, user_data, present, next_sync_id):
+    """One addons.mozilla.org tab per workspace for each extension its Arc
+    profile had enabled and that has a Firefox version (EXTENSION_MAP in
+    sync_arc_to_zen.py). present holds the (workspace uuid, url) pairs
+    already in the session and is updated."""
+    from sync_arc_to_zen import EXTENSION_MAP
+
+    slugs_by_profile = {}
+    tabs = []
+    for space in spaces:
+        info = ws_map.get(space.space_name)
+        if not info:
+            continue
+        profile = space.profile or 'Default'
+        if profile not in slugs_by_profile:
+            slugs_by_profile[profile] = [EXTENSION_MAP[i] for i in
+                                         arc_enabled_extensions(user_data, profile)
+                                         if i in EXTENSION_MAP]
+        for slug in slugs_by_profile[profile]:
+            url = AMO_ADDON_URL.format(slug)
+            if (info['uuid'], url) in present:
+                continue
+            present.add((info['uuid'], url))
+            tabs.append(make_tab(url, f"{slug} (Firefox add-on)", info['uuid'],
+                                 info['container_id'], next_sync_id()))
+    return tabs
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
 def main():
     ap = argparse.ArgumentParser(description="Inject Arc open tabs into Zen (both session files)")
     ap.add_argument('--dry-run', action='store_true', help='Preview only; write nothing')
+    ap.add_argument('--addon-tabs', action='store_true',
+                    help='Also open an addons.mozilla.org tab in each workspace for every '
+                         'extension its Arc profile had enabled that has a Firefox version')
     args = ap.parse_args()
 
     print("=" * 60)
@@ -219,7 +281,8 @@ def main():
             if e.get('url'):
                 seen.add(e['url'])
 
-    spaces = ArcPinnedTabExtractor().extract_pinned_tabs()
+    extractor = ArcPinnedTabExtractor()
+    spaces = extractor.extract_pinned_tabs()
 
     new_tabs = []
     counter = 0
@@ -246,11 +309,29 @@ def main():
             added += 1
         stats[space.space_name] = (added, skipped)
 
+    addon_counts = Counter()
+    if args.addon_tabs:
+        present = {(t.get('zenWorkspace'), e.get('url'))
+                   for t in window.get('tabs', []) + zen_sessions.get('tabs', [])
+                   for e in t.get('entries', [])}
+        user_data = os.path.join(os.path.dirname(str(extractor.arc_sidebar_file)), 'User Data')
+        ids = itertools.count(counter + 1)
+        extra = addon_tabs(spaces, ws_map, user_data, present, lambda: f"{base_ms}-{next(ids)}")
+        new_tabs += extra
+        ws_names = {info['uuid']: name for name, info in ws_map.items()}
+        addon_counts.update(ws_names[t['zenWorkspace']] for t in extra)
+
     print("\nPer-workspace:")
     for name, (added, skipped) in stats.items():
         print(f"  {name:12s} +{added} new ({skipped} already present)")
     for name, n in unmapped:
         print(f"  {name:12s} SKIPPED - no matching Zen workspace ({n} tabs)")
+    if args.addon_tabs:
+        print("\nAdd-on tabs (addons.mozilla.org):")
+        for name, n in addon_counts.items():
+            print(f"  {name:12s} +{n}")
+        if not addon_counts:
+            print("  none to add")
     print(f"\nTotal to inject into BOTH files: {len(new_tabs)}")
 
     if not new_tabs:
