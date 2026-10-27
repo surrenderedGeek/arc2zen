@@ -78,12 +78,23 @@ def is_zen_running():
         return False
 
 
-def find_zen_profile():
+def find_zen_profile(name=None):
+    """The Zen profile dir whose folder name contains name, else the most
+    recently used one."""
     import glob
     if os.name == 'nt':
         base = os.path.join(os.environ.get('APPDATA', ''), 'zen', 'Profiles')
     else:
         base = os.path.expanduser('~/Library/Application Support/zen/Profiles')
+    if name:
+        named = sorted(p for p in glob.glob(os.path.join(base, '*'))
+                       if os.path.isdir(p) and name in os.path.basename(p))
+        if not named:
+            raise FileNotFoundError(f"No Zen profile matching '{name}' in {base}")
+        if len(named) > 1:
+            raise ValueError(f"Several Zen profiles match '{name}': "
+                             + ", ".join(os.path.basename(p) for p in named))
+        return named[0]
     matches = glob.glob(os.path.join(base, '*', 'zen-sessions.jsonlz4'))
     if not matches:
         matches = glob.glob(os.path.join(base, '*', 'places.sqlite'))
@@ -246,6 +257,9 @@ def main():
     ap.add_argument('--addon-tabs', action='store_true',
                     help='Also open an addons.mozilla.org tab in each workspace for every '
                          'extension its Arc profile had enabled that has a Firefox version')
+    ap.add_argument('--zen-profile', metavar='NAME',
+                    help='Name or partial name of the Zen profile folder to write to '
+                         '(default: the most recently used profile)')
     args = ap.parse_args()
 
     print("=" * 60)
@@ -257,7 +271,11 @@ def main():
         print("Zen rewrites both session files on quit and would discard the injection.")
         return False
 
-    profile = find_zen_profile()
+    try:
+        profile = find_zen_profile(args.zen_profile)
+    except (FileNotFoundError, ValueError) as e:
+        print(f"ERROR: {e}")
+        return False
     print(f"Zen profile: {profile}")
 
     zs_path = os.path.join(profile, 'zen-sessions.jsonlz4')

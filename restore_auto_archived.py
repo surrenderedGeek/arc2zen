@@ -77,6 +77,9 @@ def main():
     ap = argparse.ArgumentParser(
         description="Restore Arc auto-archived (reason=auto) tabs into Zen as open tabs")
     ap.add_argument('--dry-run', action='store_true', help='Preview only; write nothing')
+    ap.add_argument('--zen-profile', metavar='NAME',
+                    help='Name or partial name of the Zen profile folder to write to '
+                         '(default: the most recently used profile)')
     args = ap.parse_args()
 
     print("=" * 60)
@@ -91,7 +94,11 @@ def main():
     space_names = arc_space_names()
     print(f"Auto-archived tabs in Arc archive: {len(tabs)}")
 
-    profile = iot.find_zen_profile()
+    try:
+        profile = iot.find_zen_profile(args.zen_profile)
+    except (FileNotFoundError, ValueError) as e:
+        print(f"ERROR: {e}")
+        return False
     print(f"Zen profile: {profile}")
 
     zs_path = os.path.join(profile, 'zen-sessions.jsonlz4')
