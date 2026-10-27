@@ -83,32 +83,35 @@ class Arc2ZenMigrator:
             if result.returncode == 0 and result.stdout.strip():
                 running_browsers.append('Arc')
 
-            # Check for Zen browser processes (multiple possible locations)
-            zen_paths = [
-                '/Applications/Zen Browser.app',
-                '/Applications/zen.app',
-                '/usr/local/bin/zen',
-                'zen-browser',  # For AppImage/Flatpak installations
-                'Zen' # For Windows
-            ]
+            # Check for Zen browser processes
+            if os.name == "nt":
+                result = subprocess.run(
+                    ['powershell', 'Get-Process -Name "Zen" -erroraction silentlycontinue | Select-Object id'],
+                    capture_output=True,
+                    text=True
+                )
+                if result.returncode == 0 and result.stdout.strip():
+                    running_browsers.append('Zen')
+            else:
+                # pgrep -f matches anywhere in any process's command line and is
+                # case-sensitive, so match Zen's executable paths, never a bare
+                # name like "Zen" (that matches e.g. a shell command mentioning Zen)
+                zen_paths = [
+                    'Zen.app/Contents/MacOS/',  # macOS, /Applications or ~/Applications
+                    'Zen Browser.app/Contents/MacOS/',
+                    '/usr/local/bin/zen',
+                    'zen-browser',  # For AppImage/Flatpak installations
+                ]
 
-            for zen_path in zen_paths:
-                if os.name == "nt":
-                    result = subprocess.run(
-                        ['powershell', f'Get-Process -Name "{zen_path}" -erroraction silentlycontinue | Select-Object id'],
-                        capture_output=True,
-                        text=True
-                    )
-                else:
+                for zen_path in zen_paths:
                     result = subprocess.run(
                         ['pgrep', '-f', zen_path],
                         capture_output=True,
                         text=True
                     )
-                if result.returncode == 0 and result.stdout.strip():
-                    if 'Zen' not in running_browsers:
+                    if result.returncode == 0 and result.stdout.strip():
                         running_browsers.append('Zen')
-                    break
+                        break
 
         except Exception as e:
             # Ignore false windows file not found error

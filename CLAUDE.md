@@ -117,7 +117,8 @@ Zen Profile/
 
 > **Critical insight**: Zen renders sidebar tabs from `zen-sessions.jsonlz4`,
 > NOT from the `zen_pins` database table. The DB stores metadata only.
-> `inject_session_tabs.py` handles this key step.
+> `migrate_arc_to_zen.py` handles this key step via `src/zen_sessions_importer.py`
+> (`inject_session_tabs.py` is deprecated).
 >
 > **Open (unpinned) tabs need BOTH session files** (Zen 1.20+): Zen keeps
 > `zen-sessions.jsonlz4` and `sessionstore.jsonlz4`/`recovery.jsonlz4` in

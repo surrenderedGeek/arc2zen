@@ -34,29 +34,25 @@ Run the complete migration (recommended for first-time users):
 python3 migrate_arc_to_zen.py --dry-run
 
 # If everything looks good, run the actual migration
+# (writes pinned tabs, folders and Essentials into zen-sessions.jsonlz4)
 python3 migrate_arc_to_zen.py
 
-# Then inject all tabs into the session file (makes tabs actually appear)
-python3 inject_session_tabs.py
-
-# Finally, inject Arc's open (unpinned) tabs (Zen 1.20+ keeps TWO session files)
+# Then inject Arc's open (unpinned) tabs (Zen 1.20+ keeps TWO session files)
 python3 inject_open_tabs.py --dry-run
 python3 inject_open_tabs.py
 ```
 
 ### Important: Session Tab Injection
 
-After running the main migration, tabs may only appear as bookmarks or metadata.
-To make them show up as **real browser tabs** in Zen's sidebar, run:
+Zen renders sidebar tabs from `zen-sessions.jsonlz4`, not from the `zen_pins`
+database table. `migrate_arc_to_zen.py` writes your pinned tabs, folders and
+Essentials straight into that file (via `src/zen_sessions_importer.py`), so
+they show up as **real browser tabs** in Zen's sidebar with no extra step.
+Re-running it replaces the previously migrated spaces with a fresh extraction.
 
-```bash
-# Migrate with custom settings
-python3 migrate_arc_to_zen.py --zen-profile "Default" --verbose
-```
-
-This writes directly to `zen-sessions.jsonlz4`, which is the file Zen actually
-reads to render tabs. The script is idempotent — re-running it replaces
-previously-injected tabs with a fresh extraction.
+> `inject_session_tabs.py` is deprecated and must not be run after a
+> migration: it lacks fixes the main script has (Essentials flags, Arc
+> profile → container mapping) and would overwrite the imported tabs.
 
 ### Open (Unpinned) Tabs on Zen 1.20+: Dual-File Injection
 
@@ -164,7 +160,7 @@ For **Zen 1.18+**, spaces, pinned tabs, and folders are written directly to `zen
 ```
 arc2zen/
 ├── migrate_arc_to_zen.py              # Main migration script
-├── inject_session_tabs.py             # Inject pinned tabs/folders into zen-sessions.jsonlz4
+├── inject_session_tabs.py             # Deprecated, superseded by migrate_arc_to_zen.py
 ├── inject_open_tabs.py                # Inject open tabs into BOTH session files (Zen 1.20+)
 ├── restore_auto_archived.py           # Restore Arc auto-archived tabs (reason=auto)
 ├── sync_arc_to_zen.py                 # Optional mirror mode for Zen 1.22 (see Mirror Mode)
